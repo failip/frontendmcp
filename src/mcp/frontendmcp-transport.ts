@@ -2,15 +2,20 @@ import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 
 
-
-export class WebsocketRelayTransport implements Transport {
+export class FrontendMCPTransport implements Transport {
   private socket: WebSocket;
+  private authorizationToken: string;
   public onclose?: () => void;
   public onerror?: (error: Error) => void;
   public onmessage?: (message: JSONRPCMessage) => void;
 
-  constructor(socket: WebSocket) {
-    this.socket = socket;
+  constructor(webSocket: WebSocket | string, authorizationToken: string) {
+    this.authorizationToken = authorizationToken;
+    if (typeof webSocket === "string") {
+      this.socket = new WebSocket(webSocket);
+    } else {
+      this.socket = webSocket;
+    }
   }
 
   async start(): Promise<void> {
@@ -23,6 +28,16 @@ export class WebsocketRelayTransport implements Transport {
       this.onerror?.(new Error("WebSocket error"));
       this.reconnect();
     };
+
+    const sendAuth = () => {
+      this.socket.send(JSON.stringify({ type: "auth", token: this.authorizationToken }));
+    };
+
+    if (this.socket.readyState === WebSocket.OPEN) {
+      sendAuth();
+    } else {
+      this.socket.addEventListener("open", sendAuth);
+    }
   }
 
   async close(): Promise<void> {
