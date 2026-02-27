@@ -10,8 +10,12 @@
 		"skipLibCheck": true,
 		"sourceMap": true,
 		"strict": true,
+		"declaration": true,
+		"declarationMap": true,
+		"rootDir": "src",
 		"moduleResolution": "bundler",
 		"outDir": "build"
 	},
+	"include": ["src/**/*"],
 	"exclude": ["./server/*"]
 }

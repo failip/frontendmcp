@@ -2,10 +2,18 @@
 	"name": "frontendmcp",
 	"version": "1.0.0",
 	"description": "",
-	"main": "src/mcp/index.ts",
+	"main": "build/index.js",
+	"types": "build/index.d.ts",
+	"type": "module",
+	"files": [
+		"build"
+	],
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1",
+		"clean": "rm -rf build",
 		"build": "tsc --project tsconfig.json",
+		"prepare": "npm run build",
+		"prepublishOnly": "npm run build",
 		"format": "prettier --write .",
 		"lint": "prettier --check . && eslint ."
 	},
@@ -19,9 +27,11 @@
 	"devDependencies": {
 		"@eslint/compat": "2.0.2",
 		"@eslint/js": "10.0.1",
+		"@types/node": "^20.19.35",
 		"eslint": "10.0.2",
 		"eslint-config-prettier": "^10.1.8",
 		"prettier": "3.8.1",
+		"typescript": "^5.9.3",
 		"typescript-eslint": "8.56.1"
 	}
 }
