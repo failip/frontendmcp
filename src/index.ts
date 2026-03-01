@@ -1,2 +1,2 @@
-export * from './frontendmcp-transport';
-export * from './frontendmcp-server';
+export * from './frontendmcp-transport.js';
+export * from './frontendmcp-server.js';
