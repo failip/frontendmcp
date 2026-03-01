@@ -1,7 +1,7 @@
-import { type ServerOptions } from '@modelcontextprotocol/sdk/server';
+import { type ServerOptions } from '@modelcontextprotocol/sdk/server/index.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Implementation } from '@modelcontextprotocol/sdk/types.js';
-import { FrontendMCPTransport } from './frontendmcp-transport';
+import { FrontendMCPTransport } from './frontendmcp-transport.js';
 
 type FrontendMCPServerConfig = {
 	mcpServerUrl?: string;
@@ -25,14 +25,14 @@ export class FrontendMCPServer extends McpServer {
 		const frontendMCPConfig =
 			serverInfo.frontendMCP === undefined
 				? {
-					mcpServerUrl: 'https://frontendmcp.com/mcp',
-					websocketUrl: 'wss://frontendmcp.com/mcp'
+					mcpServerUrl: 'https://mcp.frontendmcp.com/mcp',
+					websocketUrl: 'wss://mcp.frontendmcp.com/mcp'
 				}
 				: serverInfo.frontendMCP;
 
 		frontendMCPConfig.mcpServerUrl =
-			frontendMCPConfig.mcpServerUrl ?? 'https://frontendmcp.com/mcp';
-		frontendMCPConfig.websocketUrl = frontendMCPConfig.websocketUrl ?? 'wss://frontendmcp.com/mcp';
+			frontendMCPConfig.mcpServerUrl ?? 'https://mcp.frontendmcp.com/mcp';
+		frontendMCPConfig.websocketUrl = frontendMCPConfig.websocketUrl ?? 'wss://mcp.frontendmcp.com/mcp';
 
 		frontendMCPConfig.mcpServerUrl = frontendMCPConfig.mcpServerUrl.replace(/\/$/, '');
 		frontendMCPConfig.websocketUrl = frontendMCPConfig.websocketUrl.replace(/\/$/, '');
