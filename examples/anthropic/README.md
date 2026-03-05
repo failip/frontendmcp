@@ -1,8 +1,14 @@
 # Anthropic API Example
 
-Anthropic provides a MCP client directly integrated with their API. This allows you to easily connect a FrontendMCP server to an LLM running on the Anthropic platform, without setting up a MCP Client.
+## Overview
 
-For ease of use during development, you can use the "https://mcp.frontendmcp.com/llm" endpoint provided by frontendmcp to connect directly to the Anthropic API. Skipping the need to setup a server endpoint and handle the API key in your backend. This forwards your API key from the frontend to the Anthropic API, so be sure to only use this method in a secure development environment. 
+Anthropic provides an MCP client directly integrated into their API. This allows you to seamlessly connect a FrontendMCP server to an LLM running on the Anthropic platform without needing to set up a separate backend MCP Client.
+
+For ease of development, FrontendMCP provides a relay endpoint (`https://mcp.frontendmcp.com/llm`) that forwards requests directly to the Anthropic API. This allows you to skip setting up a backend proxy to handle the API key during early testing. 
+
+> **Warning:** This method exposes your API key to the frontend and the relay. Ensure you only use this in a secure local development environment.
+
+## Usage
 
 ```javascript
 	// After setting up your FrontendMCP server and registering your tools, you can connect to the Anthropic API like this:
@@ -60,4 +66,4 @@ For ease of use during development, you can use the "https://mcp.frontendmcp.com
 
 ## Links
 
-[Anthropic MCP Client documentation](https://platform.claude.com/docs/en/agents-and-tools/mcp-connector).
+- [Anthropic MCP Client documentation](https://platform.claude.com/docs/en/agents-and-tools/mcp-connector)
