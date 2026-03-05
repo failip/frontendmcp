@@ -42,6 +42,7 @@ mcpServer.registerTool("get_current_date", {
 const url = mcpServer.url;
 ```
 
+Check out the [examples](./examples) directory for more complete implementations and use cases.
 
 ## Architecture
 
