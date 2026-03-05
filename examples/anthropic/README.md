@@ -6,8 +6,7 @@ Anthropic provides an MCP client directly integrated into their API. This allows
 
 For ease of development, FrontendMCP provides a relay endpoint (`https://mcp.frontendmcp.com/llm`) that forwards requests directly to the Anthropic API. This allows you to skip setting up a backend proxy to handle the API key during early testing. 
 
-> **Warning:**
-> 
+> [!CAUTION]
 > This method exposes your API key to the frontend and the relay. Ensure you only use this in a secure local development environment.
 
 ## Usage
