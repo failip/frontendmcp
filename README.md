@@ -25,8 +25,6 @@ const mcpServer = new FrontendMCPServer(
    {version: '1.0', name: 'My MCP Server'},
 );
 
-mcpServer.connect();
-
 mcpServer.registerTool("get_current_date", {
    title: 'Get Current Date',
    description: 'Returns the current date and time.',
@@ -37,6 +35,8 @@ mcpServer.registerTool("get_current_date", {
       return new Date().toISOString();
    }
 );
+
+mcpServer.connect();
 
 // Pass the servers url to your backend LLM or MCP client to start using the tool
 const url = mcpServer.url;

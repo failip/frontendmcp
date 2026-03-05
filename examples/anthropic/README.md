@@ -11,6 +11,8 @@ For ease of development, FrontendMCP provides a relay endpoint (`https://mcp.fro
 
 ## Usage
 
+A full working example of a FrontendMCP server connecting to the Anthropic API can be found in [here](./anthropicExample.ts).
+
 ```javascript
 // After setting up your FrontendMCP server and registering your tools, you can connect to the Anthropic API like this:
 
