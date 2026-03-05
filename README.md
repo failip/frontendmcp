@@ -5,9 +5,43 @@
 The Model Context Protocol (MCP) allows applications to provide context for LLMs
 in a standardized way. FrontendMCP extends this capability to the browser.
 
-This repository contains a lightweight WebSocket relay and transport layer that
+This repository contains a lightweight relay and transport layer that
 allows you to run MCP servers in frontend applications (such as Web Workers or
 the main thread) and expose them to backend LLMs or other MCP clients.
+
+## Installation
+
+```bash
+npm install frontendmcp
+```
+
+## Usage
+
+```javascript
+import { FrontendMCPServer } from 'frontendmcp';
+import { z } from 'zod/v4';
+
+const mcpServer = new FrontendMCPServer(
+   {version: '1.0', name: 'My MCP Server'},
+);
+
+mcpServer.connect();
+
+mcpServer.registerTool("get_current_date", {
+   title: 'Get Current Date',
+   description: 'Returns the current date and time.',
+   inputSchema: z.object({}).describe('No input required'),
+   outputSchema: z.string().describe('Current date and time as a string'),
+   },
+   async () => {
+      return new Date().toISOString();
+   }
+);
+
+// Pass the servers url to your backend LLM or MCP client to start using the tool
+const url = mcpServer.url;
+```
+
 
 ## Architecture
 
