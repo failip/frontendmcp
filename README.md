@@ -2,12 +2,17 @@
 
 ## Overview
 
-The Model Context Protocol (MCP) allows applications to provide context for LLMs
-in a standardized way. FrontendMCP extends this capability to the browser.
+The Model Context Protocol (MCP) allows applications to provide context and
+tools to LLMs in a standardized way. FrontendMCP extends this model to browser
+environments.
 
-This repository contains a lightweight relay and transport layer that
-allows you to run MCP servers in frontend applications (such as Web Workers or
-the main thread) and expose them to backend LLMs or other MCP clients.
+This repository provides a lightweight relay and transport layer that allows MCP
+servers to run in frontend applications, such as the main thread or Web Workers,
+while remaining accessible to backend LLMs and other MCP clients.
+
+This is particularly useful when the capabilities you want to expose already
+exist in the browser: local state, browser-only APIs, UI logic, or frontend code
+that makes authenticated backend requests on behalf of the current user.
 
 ## Installation
 
@@ -34,7 +39,6 @@ mcpServer.registerTool("get_current_date", {
    async () => {
       return new Date().toISOString();
    }
-);
 
 mcpServer.connect();
 
@@ -42,7 +46,8 @@ mcpServer.connect();
 const url = mcpServer.url;
 ```
 
-Check out the [examples](./examples) directory for more complete implementations and use cases.
+Check out the [examples](./examples) directory for more complete implementations
+and use cases.
 
 ## Architecture
 
@@ -60,10 +65,13 @@ bridges this gap for browser environments:
 
 ## Use Cases
 
-- Client-side code execution in a sandboxed Web Worker
-- DOM inspection and manipulation
-- Local state access without syncing to a backend database
-- Access to browser-exclusive APIs like Geolocation or LocalStorage
+- Client-side code execution in a sandboxed Web Worker or iframe via [FunctionBridge](https://github.com/failip/functionbridge)
+- DOM inspection and UI orchestration
+- Local state access without syncing data to a backend first
+- Access to browser-exclusive APIs such as Geolocation or LocalStorage
+- Exposing frontend functions that call authenticated backend endpoints using
+  the current user's browser session
+- Reducing backend implementation work when the required logic already exists in the frontend application
 
 ## Contributing
 

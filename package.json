@@ -1,6 +1,6 @@
 {
-	"name": "frontendmcp",
-	"version": "1.0.1",
+	"name": "frontend-mcp",
+	"version": "0.0.1",
 	"description": "",
 	"main": "build/index.js",
 	"types": "build/index.d.ts",

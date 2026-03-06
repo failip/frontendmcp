@@ -1,7 +1,7 @@
 import { type ServerOptions } from '@modelcontextprotocol/sdk/server/index.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Implementation } from '@modelcontextprotocol/sdk/types.js';
-import { FrontendMCPTransport } from './frontendmcp-transport.js';
+import { FrontendMCPTransport } from './frontend-mcp-transport.js';
 
 type FrontendMCPServerConfig = {
 	mcpServerUrl?: string;
