@@ -1,8 +1,20 @@
-# FrontendMCP
+# FrontendMCP: Model Context Protocol for the Browser
+
+<div align="center">
+    <picture>
+      <img src="./docs/assets/frontendmcp-wordmark.svg" alt="FrontendMCP Logo" width="500"/>
+    </picture>
+    <div align="left">
+      <a href="https://www.npmjs.com/package/frontendmcp">
+        <img src="https://img.shields.io/npm/v/frontendmcp" alt="npm version" />
+      </a>
+    </div>
+</div>
+
 
 ## Overview
 
-The Model Context Protocol (MCP) allows applications to provide context and
+The [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) allows applications to provide context and
 tools to LLMs in a standardized way. FrontendMCP extends this model to browser
 environments.
 
@@ -24,26 +36,27 @@ npm install frontendmcp
 
 ```javascript
 import { FrontendMCPServer } from 'frontendmcp';
-import { z } from 'zod/v4';
+import { z } from 'zod';
 
-const mcpServer = new FrontendMCPServer(
-   {version: '1.0', name: 'My MCP Server'},
-);
+const mcp = new FrontendMCPServer({
+  name: 'ClientTools',
+  version: '1.0'
+});
 
-mcpServer.registerTool("get_current_date", {
-   title: 'Get Current Date',
-   description: 'Returns the current date and time.',
-   inputSchema: z.object({}).describe('No input required'),
-   outputSchema: z.string().describe('Current date and time as a string'),
-   },
-   async () => {
-      return new Date().toISOString();
-   }
+mcp.registerTool('get_selection', {
+  description: 'Read highlighted text',
+  inputSchema: z.object({})
+}, async () => ({
+  content: [{
+    type: 'text',
+    text: window.getSelection()?.toString() || ""
+  }]
+}));
 
-mcpServer.connect();
+mcp.connect();
 
-// Pass the servers url to your backend LLM or MCP client to start using the tool
-const url = mcpServer.url;
+// Pass the server's URL to your backend LLM or MCP client to start using the tool
+const url = mcp.url;
 ```
 
 Check out the [examples](./examples) directory for more complete implementations
@@ -51,7 +64,7 @@ and use cases.
 
 ## Architecture
 
-Standard MCP clients typically communicate over HTTP or STDIO. FrontendMCP
+Standard MCP clients typically communicate over Streaming HTTP or STDIO. FrontendMCP
 bridges this gap for browser environments:
 
 1. The relay server listens for incoming HTTP requests from an MCP client.
@@ -62,6 +75,8 @@ bridges this gap for browser environments:
 4. The frontend MCP server processes the request and sends the response back
    through the WebSocket.
 5. The relay server completes the HTTP request with the frontend's response.
+
+The full protocol is detailed in [PROTOCOL.md](./PROTOCOL.md) and the reference implementations are available in the [server](./server) directory.
 
 ## Use Cases
 
