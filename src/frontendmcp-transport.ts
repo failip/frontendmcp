@@ -45,7 +45,7 @@ export class FrontendMCPTransport implements Transport {
 
 	async send(message: JSONRPCMessage | null): Promise<void> {
 		if (message === null) {
-			this.socket.send('202' + JSON.stringify(message));
+			this.socket.send('202');
 			return;
 		}
 		this.socket.send('200' + JSON.stringify(message));

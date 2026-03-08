@@ -121,7 +121,9 @@ async fn handle_mcp(
         .auth_tokens
         .get(&uuid)
         .map(|expected| {
-            if let Some(h) = auth_header {
+            if expected.is_empty() {
+                true
+            } else if let Some(h) = auth_header {
                 h == format!("Bearer {}", *expected)
             } else {
                 false

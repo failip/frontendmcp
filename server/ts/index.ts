@@ -7,6 +7,21 @@ const activeWebSockets = new Set<string>();
 async function handleMCP(request: Request, server: Bun.Server<{ uuid: string }>) {
 	const uuid = request.params.uuid;
 
+	if (request.method === 'GET' && request.headers.get('accept')?.includes('text/event-stream')) {
+		return new Response(new ReadableStream({
+			start(controller) {
+				controller.enqueue(`id: ${Date.now()}\nevent: connected\ndata: {"status":"connected"}\n\n`);
+			}
+		}), {
+			headers: {
+				'Content-Type': 'text/event-stream',
+				'Cache-Control': 'no-cache',
+				'Connection': 'keep-alive',
+				'Mcp-Session-Id': uuid,
+			}
+		});
+	}
+
 	if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
 		if (activeWebSockets.has(uuid)) {
 			return new Response('WebSocket connection already exists', { status: 409 });
@@ -22,23 +37,28 @@ async function handleMCP(request: Request, server: Bun.Server<{ uuid: string }>)
 
 	const expectedToken = authTokens.get(uuid);
 	const authHeader = request.headers.get('authorization');
-	if (!expectedToken || authHeader !== `Bearer ${expectedToken}`) {
+	if (expectedToken === undefined || (expectedToken !== '' && authHeader !== `Bearer ${expectedToken}`)) {
 		return new Response('Unauthorized', { status: 401 });
 	}
 
-	console.log(request.headers.toJSON());
-
-	const body = request.body.text();
+	const body = await request.text();
 
 	const replyPromise = new Promise<string>((resolve) => {
 		resolveReplyPromises.set(uuid, resolve);
 	});
 
-	server.publish(uuid, await body);
+	server.publish(uuid, body);
+
 	const reply = await replyPromise;
 	const status = Number.parseInt(reply.substring(0, 3));
 	const content = reply.substring(3);
-	return new Response(content, { status: status, headers: { 'Content-Type': 'application/json' } });
+	return new Response(content || null, {
+		status: Number.isNaN(status) ? 200 : status,
+		headers: {
+			'Content-Type': 'application/json',
+			'Mcp-Session-Id': uuid
+		}
+	});
 }
 
 const server = Bun.serve<{ uuid: string }>({
@@ -48,7 +68,7 @@ const server = Bun.serve<{ uuid: string }>({
 	},
 	websocket: {
 		open(ws) {
-			console.log(`WebSocket connection opened for uuid: ${ws.data.uuid}`);
+			console.log(`WebSocket opened for session ${ws.data.uuid}`);
 			ws.subscribe(ws.data.uuid);
 		},
 		message(ws, message) {
@@ -57,7 +77,7 @@ const server = Bun.serve<{ uuid: string }>({
 					try {
 						const data = JSON.parse(message);
 						authTokens.set(ws.data.uuid, data.token);
-					} catch (e) {}
+					} catch (e) { }
 				}
 				return;
 			}

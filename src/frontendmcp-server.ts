@@ -38,8 +38,7 @@ export class FrontendMCPServer extends McpServer {
 		frontendMCPConfig.websocketUrl = frontendMCPConfig.websocketUrl.replace(/\/$/, '');
 
 		frontendMCPConfig.uuid = frontendMCPConfig.uuid ?? crypto.randomUUID();
-		frontendMCPConfig.authorizationToken =
-			frontendMCPConfig.authorizationToken ?? crypto.randomUUID();
+		frontendMCPConfig.authorizationToken = frontendMCPConfig.authorizationToken ?? '';
 
 		this.uuid = frontendMCPConfig.uuid;
 		this.authorizationToken = frontendMCPConfig.authorizationToken;
