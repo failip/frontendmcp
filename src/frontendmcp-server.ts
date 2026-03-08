@@ -22,17 +22,18 @@ export class FrontendMCPServer extends McpServer {
 	) {
 		super(serverInfo, options);
 
+
 		const frontendMCPConfig =
 			serverInfo.frontendMCP === undefined
 				? {
 					mcpServerUrl: 'https://mcp.frontendmcp.com/mcp',
-					websocketUrl: 'wss://mcp.frontendmcp.com/mcp'
+					websocketUrl: 'wss://mcp.frontendmcp.com/mcp/ws',
 				}
 				: serverInfo.frontendMCP;
 
 		frontendMCPConfig.mcpServerUrl =
 			frontendMCPConfig.mcpServerUrl ?? 'https://mcp.frontendmcp.com/mcp';
-		frontendMCPConfig.websocketUrl = frontendMCPConfig.websocketUrl ?? 'wss://mcp.frontendmcp.com/mcp';
+		frontendMCPConfig.websocketUrl = frontendMCPConfig.websocketUrl ?? 'wss://mcp.frontendmcp.com/mcp/ws';
 
 		frontendMCPConfig.mcpServerUrl = frontendMCPConfig.mcpServerUrl.replace(/\/$/, '');
 		frontendMCPConfig.websocketUrl = frontendMCPConfig.websocketUrl.replace(/\/$/, '');
