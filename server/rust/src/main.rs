@@ -4,8 +4,8 @@ use axum::{
         Path, State,
     },
     http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
-    routing::post,
+    response::{sse::{Event, Sse}, IntoResponse, Response},
+    routing::{get, post},
     Router,
 };
 use bytes::Bytes;
@@ -15,11 +15,13 @@ use reqwest::Client;
 use serde::Deserialize;
 use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
 use tower_http::cors::CorsLayer;
 
 #[derive(Clone)]
 struct AppState {
     ws_senders: Arc<DashMap<String, mpsc::Sender<String>>>,
+    sse_senders: Arc<DashMap<String, mpsc::Sender<Event>>>,
     reply_senders: Arc<DashMap<String, oneshot::Sender<String>>>,
     auth_tokens: Arc<DashMap<String, String>>,
     http_client: Client,
@@ -36,13 +38,15 @@ async fn main() {
 
     let state = AppState {
         ws_senders: Arc::new(DashMap::new()),
+        sse_senders: Arc::new(DashMap::new()),
         reply_senders: Arc::new(DashMap::new()),
         auth_tokens: Arc::new(DashMap::new()),
         http_client: Client::new(),
     };
 
     let app = Router::new()
-        .route("/mcp/{uuid}", post(handle_mcp).get(ws_handler))
+        .route("/mcp/{uuid}", post(handle_mcp).get(sse_handler))
+        .route("/mcp/ws/{uuid}", get(ws_handler))
         .route("/llm", post(handle_llm))
         .layer(CorsLayer::permissive())
         .with_state(state);
@@ -112,6 +116,17 @@ async fn handle_socket(socket: WebSocket, uuid: String, state: AppState) {
     state.auth_tokens.remove(&uuid);
 }
 
+async fn sse_handler(
+    Path(uuid): Path<String>,
+    State(state): State<AppState>,
+) -> Sse<impl futures::stream::Stream<Item = Result<Event, Infallible>>> {
+    let (tx, rx) = mpsc::channel::<Event>(100);
+    state.sse_senders.insert(uuid.clone(), tx);
+
+    let stream = ReceiverStream::new(rx).map(Ok);
+    Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::new())
+}
+
 async fn handle_mcp(
     Path(uuid): Path<String>,
     headers: HeaderMap,
@@ -137,6 +152,13 @@ async fn handle_mcp(
 
     if !is_authorized {
         return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
+    }
+
+    // Support for POST requests in Streamable HTTP
+    if let Some(sse_tx) = state.sse_senders.get(&uuid) {
+        if sse_tx.send(Event::default().data(body.clone())).await.is_ok() {
+            return (StatusCode::ACCEPTED, "Accepted").into_response();
+        }
     }
 
     let (tx, rx) = oneshot::channel();
