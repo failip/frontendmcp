@@ -5,7 +5,7 @@ use axum::{
     },
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{post},
+    routing::post,
     Router,
 };
 use bytes::Bytes;
@@ -13,7 +13,7 @@ use dashmap::DashMap;
 use futures::{sink::SinkExt, stream::StreamExt};
 use reqwest::Client;
 use serde::Deserialize;
-use std::{convert::Infallible, net::SocketAddr, sync::Arc};
+use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, oneshot};
 use tower_http::cors::CorsLayer;
 
@@ -98,6 +98,8 @@ async fn handle_socket(socket: WebSocket, uuid: String, state: AppState) {
                 }
             }
         }
+
+        state_clone.reply_senders.remove(&uuid_clone);
     });
 
     tokio::select! {
@@ -124,7 +126,9 @@ async fn handle_mcp(
             if expected.is_empty() {
                 true
             } else if let Some(h) = auth_header {
-                h == format!("Bearer {}", *expected)
+                h.len() == 7 + expected.len()
+                    && h.starts_with("Bearer ")
+                    && &h[7..] == expected.as_str()
             } else {
                 false
             }
@@ -140,14 +144,16 @@ async fn handle_mcp(
 
     if let Some(ws_tx) = state.ws_senders.get(&uuid) {
         if ws_tx.send(body).await.is_err() {
+            state.reply_senders.remove(&uuid);
             return (StatusCode::INTERNAL_SERVER_ERROR, "WebSocket disconnected").into_response();
         }
     } else {
+        state.reply_senders.remove(&uuid);
         return (StatusCode::NOT_FOUND, "WebSocket not connected").into_response();
     }
 
-    match rx.await {
-        Ok(reply) => {
+    match tokio::time::timeout(Duration::from_secs(240), rx).await {
+        Ok(Ok(reply)) => {
             if reply.len() >= 3 {
                 let status_str = &reply[0..3];
                 let content = &reply[3..];
@@ -164,43 +170,35 @@ async fn handle_mcp(
             }
             (StatusCode::INTERNAL_SERVER_ERROR, "Invalid reply format").into_response()
         }
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Reply channel closed").into_response(),
+        Ok(Err(_)) => (StatusCode::INTERNAL_SERVER_ERROR, "Reply channel closed").into_response(),
+        Err(_) => {
+            state.reply_senders.remove(&uuid);
+            (StatusCode::GATEWAY_TIMEOUT, "Timed out waiting for WebSocket reply").into_response()
+        }
     }
 }
 
 fn is_allowed_host(hostname: &str) -> bool {
-    if hostname == "localhost" || hostname == "127.0.0.1" {
-        return true;
-    }
-    if hostname.starts_with("192.168.") || hostname.starts_with("10.") {
-        return true;
-    }
-    if let Some(rest) = hostname.strip_prefix("172.") {
-        if let Some(seg) = rest.split('.').next() {
-            if let Ok(n) = seg.parse::<u8>() {
-                return (16..=31).contains(&n);
-            }
-        }
-    }
-    false
+    hostname == "localhost"
+        || hostname == "127.0.0.1"
+        || hostname.starts_with("192.168.")
+        || hostname.starts_with("10.")
+        || hostname
+            .strip_prefix("172.")
+            .and_then(|rest| rest.split('.').next())
+            .and_then(|seg| seg.parse::<u8>().ok())
+            .map(|n| (16..=31).contains(&n))
+            .unwrap_or(false)
 }
 
 fn origin_allowed(headers: &HeaderMap) -> bool {
-    let header_value = headers
+    headers
         .get("origin")
-        .or_else(|| headers.get("referer"));
-
-    if let Some(val) = header_value {
-        if let Ok(s) = val.to_str() {
-            if let Ok(url) = url::Url::parse(s) {
-                if let Some(hostname) = url.host_str() {
-                    return is_allowed_host(hostname);
-                }
-            }
-        }
-    }
-
-    false
+        .or_else(|| headers.get("referer"))
+        .and_then(|val| val.to_str().ok())
+        .and_then(|s| url::Url::parse(s).ok())
+        .and_then(|url| url.host_str().map(is_allowed_host))
+        .unwrap_or(false)
 }
 
 async fn handle_llm(
@@ -252,31 +250,29 @@ async fn handle_llm(
         }
     };
 
-    let stream = res.bytes_stream().map(|result| {
-        match result {
-            Ok(bytes) => {
-                Ok::<_, Infallible>(bytes)
-            }
-            Err(e) => {
-                Ok::<_, Infallible>(Bytes::from(format!("event: error\ndata: {}\n\n", e)))
-            }
-        }
+    let status = res.status();
+    let content_type = res
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+
+    let stream = res.bytes_stream().map(|result| match result {
+        Ok(bytes) => Ok::<_, Infallible>(bytes),
+        Err(e) => Ok::<_, Infallible>(Bytes::from(format!("stream error: {}", e))),
     });
 
     let body = axum::body::Body::from_stream(stream);
-    
     let mut response = Response::new(body);
+    *response.status_mut() = status;
     response.headers_mut().insert(
         "Content-Type",
-        "text/event-stream".parse().unwrap(),
+        content_type.parse().unwrap(),
     );
     response.headers_mut().insert(
         "Cache-Control",
         "no-cache".parse().unwrap(),
-    );
-    response.headers_mut().insert(
-        "Connection",
-        "keep-alive".parse().unwrap(),
     );
 
     response
