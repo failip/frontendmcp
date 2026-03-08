@@ -4,6 +4,20 @@ const resolveReplyPromises = new Map<string, (value: string) => void>();
 const authTokens = new Map<string, string>();
 const activeWebSockets = new Set<string>();
 
+async function handleWS(request: Request, server: Bun.Server<{ uuid: string }>) {
+	const uuid = request.params.uuid;
+	if (activeWebSockets.has(uuid)) {
+		return new Response('WebSocket connection already exists', { status: 409 });
+	}
+
+	activeWebSockets.add(uuid);
+	const success = server.upgrade(request, { data: { uuid } });
+	if (success) return undefined;
+
+	activeWebSockets.delete(uuid);
+	return new Response('WebSocket upgrade failed', { status: 400 });
+}
+
 async function handleMCP(request: Request, server: Bun.Server<{ uuid: string }>) {
 	const uuid = request.params.uuid;
 
@@ -20,19 +34,6 @@ async function handleMCP(request: Request, server: Bun.Server<{ uuid: string }>)
 				'Mcp-Session-Id': uuid,
 			}
 		});
-	}
-
-	if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
-		if (activeWebSockets.has(uuid)) {
-			return new Response('WebSocket connection already exists', { status: 409 });
-		}
-
-		activeWebSockets.add(uuid);
-		const success = server.upgrade(request, { data: { uuid } });
-		if (success) return undefined;
-
-		activeWebSockets.delete(uuid);
-		return new Response('WebSocket upgrade failed', { status: 400 });
 	}
 
 	const expectedToken = authTokens.get(uuid);
@@ -64,6 +65,7 @@ async function handleMCP(request: Request, server: Bun.Server<{ uuid: string }>)
 const server = Bun.serve<{ uuid: string }>({
 	routes: {
 		'/mcp/:uuid': handleMCP,
+		'/mcp/ws/:uuid': handleWS,
 		'/llm': handleLLM
 	},
 	websocket: {
