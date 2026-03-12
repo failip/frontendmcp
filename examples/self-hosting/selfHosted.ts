@@ -5,7 +5,13 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || 'your_anthropic_api_k
 
 async function main() {
   // create and configure a frontend MCP server
-  const mcpServer = new FrontendMCPServer({ version: '1.0', name: 'My MCP Server' });
+  const mcpServer = new FrontendMCPServer({
+    version: '1.0', name: 'My MCP Server',
+    frontendMCP: {
+      mcpServerUrl: 'https://your-custom-domain.com/mcp',
+      websocketUrl: 'wss://your-custom-domain.com/mcp/ws',
+    }
+  });
 
   mcpServer.registerTool(
     'get_current_date',

@@ -11,25 +11,23 @@
     </div>
 </div>
 
-
 ## Overview
 
 The [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) allows applications to provide context and
 tools to LLMs in a standardized way. FrontendMCP extends this model to browser
 environments.
 
-This repository provides a lightweight relay and transport layer that allows MCP
-servers to run in frontend applications, such as the main thread or Web Workers,
-while remaining accessible to backend LLMs and other MCP clients.
+This FrontendMCP provides a lightweight relay and transport layer that allows MCP
+servers to run in client-side applications while remaining accessible to backend LLMs and other MCP clients.
 
-This is particularly useful when the capabilities you want to expose already
-exist in the browser: local state, browser-only APIs, UI logic, or frontend code
-that makes authenticated backend requests on behalf of the current user.
+This is particularly useful when the capabilities you want to expose only exist in the client: local state, browser-only APIs, UI logic or frontend code that makes authenticated backend requests on behalf of the current user.
+
+A prehosted relay server is available, so you can get started with FrontendMCP in just a few lines of code. Server implementations in Rust and TypeScript are also provided for those who want to self-host or customize their relay server.
 
 ## Installation
 
 ```bash
-npm install frontendmcp
+npm install frontendmcp zod
 ```
 
 ## Usage
@@ -64,8 +62,13 @@ and use cases.
 
 ## Architecture
 
-Standard MCP clients typically communicate over Streaming HTTP or STDIO. FrontendMCP
-bridges this gap for browser environments:
+<div align="center">
+    <picture>
+      <img src="./docs/assets/connection-diagram.svg" alt="FrontendMCP Architecture" width="700"/>
+    </picture>
+</div>
+
+Standard MCP clients typically communicate over Streaming HTTP or STDIO. FrontendMCP uses a relay server to bridge the gap between HTTP-based MCP clients and WebSocket-based communication with the frontend.
 
 1. The relay server listens for incoming HTTP requests from an MCP client.
 2. The frontend establishes a persistent WebSocket connection to the relay
@@ -80,13 +83,18 @@ The full protocol is detailed in [PROTOCOL.md](./PROTOCOL.md) and the reference 
 
 ## Use Cases
 
-- Client-side code execution in a sandboxed Web Worker or iframe via [FunctionBridge](https://github.com/failip/functionbridge)
-- DOM inspection and UI orchestration
 - Local state access without syncing data to a backend first
-- Access to browser-exclusive APIs such as Geolocation or LocalStorage
+- UI interactions such as reading highlighted text, clicking buttons, or filling out forms
 - Exposing frontend functions that call authenticated backend endpoints using
   the current user's browser session
-- Reducing backend implementation work when the required logic already exists in the frontend application
+- Reducing backend implementation work when generic computation or logic can be handled in the frontend
+- Client-side code execution via [FunctionBridge](https://github.com/failip/functionbridge)
+
+## Roadmap
+
+- Additional examples and documentation
+- WebRTC based MCPClient for peer-to-peer connections
+- Community feedback and contributions to guide future development
 
 ## Contributing
 

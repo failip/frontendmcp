@@ -30,7 +30,6 @@ const message = {
 			type: 'url',
 			url: mcpServer.url,
 			name: 'FrontendMCP Server',
-			authorization_token: mcpServer.authorizationToken
 		}
 	],
 	tools: [
