@@ -75,9 +75,37 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
+// Guard that removes the SSE sender from the map when dropped,
+// even if the stream future is abandoned by Axum (client disconnect).
+struct SseGuard {
+    sse_txs: Arc<DashMap<usize, mpsc::Sender<Event>>>,
+    stream_id: usize,
+}
+
+impl Drop for SseGuard {
+    fn drop(&mut self) {
+        self.sse_txs.remove(&self.stream_id);
+    }
+}
+
 fn next_request_id(seq: &std::sync::atomic::AtomicU16) -> String {
     let n = seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed) & 0xfff;
     format!("{:03x}", n)
+}
+
+// Finds a free request-id slot, trying up to 4096 candidates.
+// Returns None if all slots are occupied (extremely unlikely).
+fn alloc_request_id(
+    seq: &std::sync::atomic::AtomicU16,
+    pending: &DashMap<String, PendingRequest>,
+) -> Option<String> {
+    for _ in 0..=0xfff {
+        let id = next_request_id(seq);
+        if !pending.contains_key(&id) {
+            return Some(id);
+        }
+    }
+    None
 }
 
 async fn ws_handler(
@@ -106,11 +134,12 @@ async fn handle_socket(socket: WebSocket, uuid: String, state: AppState) {
     let state_clone = state.clone();
     let uuid_clone = uuid.clone();
     let mut recv_task = tokio::spawn(async move {
+        // Local flag avoids the TOCTOU race on `sessions.contains_key`.
+        let mut authenticated = false;
+
         while let Some(Ok(msg)) = receiver.next().await {
             if let Message::Text(text) = msg {
-                let session_exists = state_clone.sessions.contains_key(&uuid_clone);
-
-                if !session_exists {
+                if !authenticated {
                     // First message must be auth
                     if let Ok(auth_msg) = serde_json::from_str::<AuthMessage>(&text) {
                         let session = Session {
@@ -122,6 +151,7 @@ async fn handle_socket(socket: WebSocket, uuid: String, state: AppState) {
                             seq: Arc::new(std::sync::atomic::AtomicU16::new(0)),
                         };
                         state_clone.sessions.insert(uuid_clone.clone(), session);
+                        authenticated = true;
                     } else {
                         // Invalid auth payload — close
                         break;
@@ -153,6 +183,23 @@ async fn handle_socket(socket: WebSocket, uuid: String, state: AppState) {
                                     }
                                     PendingRequest::Streaming(tx) => {
                                         let _ = tx.send(StreamEvent::End(status_code, content)).await;
+                                    }
+                                }
+                            }
+                        } else {
+                            // Unrecognised status token — unblock the caller with a 502
+                            // so it doesn't hang until the 240 s timeout.
+                            eprintln!(
+                                "[ws {}] unrecognised status {:?} for request {}; unblocking caller",
+                                uuid_clone, status_str, request_id
+                            );
+                            if let Some((_, pending)) = session.pending.remove(request_id) {
+                                match pending {
+                                    PendingRequest::Single(tx) => {
+                                        let _ = tx.send((502, "bad gateway: unrecognised WS status token".into()));
+                                    }
+                                    PendingRequest::Streaming(tx) => {
+                                        let _ = tx.send(StreamEvent::End(502, "bad gateway: unrecognised WS status token".into())).await;
                                     }
                                 }
                             }
@@ -189,7 +236,9 @@ async fn sse_handler(
 
     let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
     let authorized = session.auth_token.is_empty()
-        || auth_header.map(|h| h == format!("Bearer {}", session.auth_token)).unwrap_or(false);
+        || auth_header
+            .map(|h| h.strip_prefix("Bearer ").map(|t| t == session.auth_token).unwrap_or(false))
+            .unwrap_or(false);
     if !authorized {
         return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
     }
@@ -198,17 +247,23 @@ async fn sse_handler(
     let stream_id = session.sse_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     session.sse_txs.insert(stream_id, tx.clone());
 
+    // Guard ensures the sender slot is freed even on abrupt client disconnect.
+    let guard = SseGuard {
+        sse_txs: session.sse_txs.clone(),
+        stream_id,
+    };
+
     // Send initial keep-alive event with an event ID
     let event_id = format!("{}-{}", uuid, stream_id);
     let _ = tx.send(Event::default().id(event_id).comment("keep-alive")).await;
 
-    let sse_txs = session.sse_txs.clone();
     let stream = async_stream::stream! {
+        // Owns the guard; dropped when the stream is dropped.
+        let _guard = guard;
         let mut stream = ReceiverStream::new(rx);
         while let Some(event) = stream.next().await {
             yield Ok::<Event, Infallible>(event);
         }
-        sse_txs.remove(&stream_id);
     };
 
     let mut response = Sse::new(stream)
@@ -247,7 +302,9 @@ async fn handle_mcp_post(
 
     let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
     let authorized = session.auth_token.is_empty()
-        || auth_header.map(|h| h == format!("Bearer {}", session.auth_token)).unwrap_or(false);
+        || auth_header
+            .map(|h| h.strip_prefix("Bearer ").map(|t| t == session.auth_token).unwrap_or(false))
+            .unwrap_or(false);
     if !authorized {
         return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
     }
@@ -258,22 +315,23 @@ async fn handle_mcp_post(
         .map(|v| v.contains("text/event-stream"))
         .unwrap_or(false);
 
-    let request_id = next_request_id(&session.seq);
-
-    if session.pending.contains_key(&request_id) {
-        return (StatusCode::TOO_MANY_REQUESTS, "Too many concurrent requests").into_response();
-    }
+    let request_id = match alloc_request_id(&session.seq, &session.pending) {
+        Some(id) => id,
+        None => return (StatusCode::TOO_MANY_REQUESTS, "Too many concurrent requests").into_response(),
+    };
 
     if wants_sse {
         let (stream_tx, mut stream_rx) = mpsc::channel::<StreamEvent>(32);
         session.pending.insert(request_id.clone(), PendingRequest::Streaming(stream_tx));
 
-        if session.ws_tx.send(format!("{}{}", request_id, body)).await.is_err() {
+        let mut msg = String::with_capacity(request_id.len() + body.len());
+        msg.push_str(&request_id);
+        msg.push_str(&body);
+        if session.ws_tx.send(msg).await.is_err() {
             session.pending.remove(&request_id);
             return (StatusCode::INTERNAL_SERVER_ERROR, "WebSocket disconnected").into_response();
         }
 
-        let uuid_clone = uuid.clone();
         let sse_stream = async_stream::stream! {
             let mut event_seq: u32 = 0;
             loop {
@@ -303,13 +361,16 @@ async fn handle_mcp_post(
         let mut response = Sse::new(sse_stream)
             .keep_alive(axum::response::sse::KeepAlive::new())
             .into_response();
-        response.headers_mut().insert("Mcp-Session-Id", uuid_clone.parse().unwrap());
+        response.headers_mut().insert("Mcp-Session-Id", uuid.parse().unwrap());
         response
     } else {
         let (tx, rx) = oneshot::channel();
         session.pending.insert(request_id.clone(), PendingRequest::Single(tx));
 
-        if session.ws_tx.send(format!("{}{}", request_id, body)).await.is_err() {
+        let mut msg = String::with_capacity(request_id.len() + body.len());
+        msg.push_str(&request_id);
+        msg.push_str(&body);
+        if session.ws_tx.send(msg).await.is_err() {
             session.pending.remove(&request_id);
             return (StatusCode::INTERNAL_SERVER_ERROR, "WebSocket disconnected").into_response();
         }
@@ -317,14 +378,18 @@ async fn handle_mcp_post(
         match tokio::time::timeout(Duration::from_secs(240), rx).await {
             Ok(Ok((status_code, content))) => {
                 let status = StatusCode::from_u16(status_code).unwrap_or(StatusCode::OK);
-                let mut response = Response::builder()
+                match Response::builder()
                     .status(status)
                     .header("Content-Type", "application/json")
-                    .header("Mcp-Session-Id", uuid.clone())
+                    .header("Mcp-Session-Id", uuid.as_str())
                     .body(axum::body::Body::from(content))
-                    .unwrap();
-                response.headers_mut().insert("Mcp-Session-Id", uuid.parse().unwrap());
-                response
+                {
+                    Ok(response) => response,
+                    Err(e) => {
+                        eprintln!("Failed to build response: {}", e);
+                        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to build response").into_response()
+                    }
+                }
             }
             Ok(Err(_)) => (StatusCode::INTERNAL_SERVER_ERROR, "Reply channel closed").into_response(),
             Err(_) => {
@@ -411,9 +476,7 @@ async fn handle_llm(
     let content_type = res
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("application/octet-stream")
-        .to_string();
+        .cloned();
 
     let stream = res.bytes_stream().map(|result| match result {
         Ok(bytes) => Ok::<_, Infallible>(bytes),
@@ -423,10 +486,10 @@ async fn handle_llm(
     let body = axum::body::Body::from_stream(stream);
     let mut response = Response::new(body);
     *response.status_mut() = status;
-    response.headers_mut().insert(
-        "Content-Type",
-        content_type.parse().unwrap(),
-    );
+
+    if let Some(ct) = content_type {
+        response.headers_mut().insert("Content-Type", ct);
+    }
     response.headers_mut().insert(
         "Cache-Control",
         "no-cache".parse().unwrap(),
