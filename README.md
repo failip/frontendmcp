@@ -64,7 +64,7 @@ and use cases.
 
 <div align="center">
     <picture>
-      <img src="./docs/assets/connection-diagram.svg" alt="FrontendMCP Architecture" width="700"/>
+      <img src="./docs/assets/diagram.svg" alt="FrontendMCP Architecture" width="700"/>
     </picture>
 </div>
 
