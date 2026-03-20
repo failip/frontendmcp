@@ -4,6 +4,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 export class FrontendMCPTransport implements Transport {
 	private socket: WebSocket;
 	private authorizationToken: string;
+	private requestMap = new Map<string | number, string>();
 	public onclose?: () => void;
 	public onerror?: (error: Error) => void;
 	public onmessage?: (message: JSONRPCMessage) => void;
@@ -45,17 +46,39 @@ export class FrontendMCPTransport implements Transport {
 
 	async send(message: JSONRPCMessage | null): Promise<void> {
 		if (message === null) {
-			this.socket.send('202');
 			return;
 		}
-		this.socket.send('200' + JSON.stringify(message));
+		let requestId = '000';
+		if ('id' in message && message.id !== undefined) {
+			const storedId = this.requestMap.get(message.id);
+			if (storedId) {
+				requestId = storedId;
+				this.requestMap.delete(message.id);
+			}
+		}
+		this.socket.send(`${requestId}200${JSON.stringify(message)}`);
+	}
+
+	// Not used yet
+	private sendChunk(mcpId: string | number, message: JSONRPCMessage): void {
+		const requestId = this.requestMap.get(mcpId);
+		if (!requestId) {
+			console.warn('sendChunk: no requestId for mcpId', mcpId);
+			return;
+		}
+		this.socket.send(`${requestId}CHK${JSON.stringify(message)}`);
 	}
 
 	private handleSocketMessage(event: MessageEvent): void {
-		console.debug('Received message:', event.data);
-		const message = JSON.parse(event.data) as JSONRPCMessage;
+		const dataStr = event.data as string;
+		const requestId = dataStr.substring(0, 3);
+		const payload = dataStr.substring(3);
+
+		const message = JSON.parse(payload) as JSONRPCMessage;
 		if (!('id' in message) || message.id === undefined) {
-			this.send(null);
+			this.socket.send(`${requestId}202`);
+		} else {
+			this.requestMap.set(message.id, requestId);
 		}
 		this.onmessage?.(message);
 	}

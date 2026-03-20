@@ -54,3 +54,37 @@ export async function handleLLM(request: Request, server: Bun.Server<{ uuid: str
 		}
 	});
 }
+
+export async function handleGemini(request: Request, server: Bun.Server<{ uuid: string }>) {
+	const referer = request.headers.get('referer');
+	if (referer) {
+		const url = new URL(referer);
+		const hostname = url.hostname;
+		if (
+			hostname === 'localhost' ||
+			hostname === '127.0.0.1' ||
+			hostname.startsWith('192.168.') ||
+			hostname.startsWith('10.') ||
+			hostname.startsWith('172.16.') ||
+			hostname.startsWith('172.31.')
+		) {
+		} else {
+			return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
+		}
+	}
+	const body = await request.json();
+
+	const response = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			'x-goog-api-key': process.env.GOOGLE_API_KEY || ''
+		},
+		body: JSON.stringify(body)
+	});
+
+	return new Response(response.body, {
+		status: response.status,
+		headers: response.headers
+	});
+}
